@@ -1,6 +1,13 @@
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import seaborn as sns
 from scipy.stats import mode
+from sklearn.model_selection import cross_val_score
+from sklearn import metrics
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+
+
 
 
 # Step1: EXPLORATORY DATA ANALYSIS
@@ -53,6 +60,9 @@ for col in categorical_columns:
     print (data[col].value_counts())
 
 
+plt.figure(figsize=(10.7))
+sns.heatmap(data.corr())
+
 # Step2: DATA CLEANING
 
 # Determine the average weight per item:
@@ -63,7 +73,7 @@ miss_bool = data['Product_Size'].isnull()
 
 # Impute Product_Size data and check the number of missing values before and after imputation to confirm
 print ('Orignal #missing: %d'% sum(miss_bool))
-data.loc[miss_bool, 'Product_Size'] = data.loc[miss_bool, 'Product_Id'].apply(lambda x: product_avg_weight.loc[x])
+data.loc[miss_bool, 'Prodduct_Size'] = data.loc[miss_bool, 'Product_Id'].apply(lambda x: product_avg_weight.loc[x])
 print ('Final #missing: %d'% sum(data['Product_Size'].isnull()))
 
 # Determine the mode for Branch_Size
@@ -77,7 +87,64 @@ miss_bool = data['Branch_Area'].isnull()
 # Impute data and check #missing values before and after imputation to confirm
 print ('\nOrignal #missing: %d'% sum(miss_bool))
 data.loc[miss_bool,'Branch_Area'] = data.loc[miss_bool,'Branch_Type'].apply(lambda x: Branch_Area_mode[x])
+data.dropna(subset=['Branch_Area']).pivot_table(values='Branch_Area', columns='Branch_Type',aggfunc=(lambda x:mode(x.astype('str')).mode[0]), dropna=True)
 print ('Final #missing: %d'%sum(data['Branch_Area'].isnull()))
 
+# Step 3: MOODEL BUILDING
+
+# Define target and ID columns:
+target = 'Branch_Product_Sales'
+IDcol = ['Product_Id','Branch_Id']
+#,'Product_Catogory','Product_Health_Info', 'Product_Display_Area', 'Branch_Area', 'Branch_Location_Type','Product_Size','Branch_Year','Branch_Type', 'source'
 
 
+def modelfit(alg, dtrain, dtest, predictors, target, IDcol, filename):
+    # Fit the algorithm on the data
+    alg.fit(dtrain[predictors], dtrain[target])
+
+    # Predict training set:
+    dtrain_predictions = alg.predict(dtrain[predictors])
+
+    # Perform cross-validation:
+    cv_score = cross_val_score(alg, dtrain[predictors], dtrain[target], cv=20, scoring='mean_squared_error')
+    cv_score = np.sqrt(np.abs(cv_score))
+
+    # Print model report:
+    print ("\nModel Report")
+    print ("RMSE : %.4g" % np.sqrt(metrics.mean_squared_error(dtrain[target].values, dtrain_predictions)))
+    print ("CV Score : Mean - {:.4g} | Std - {:.4g} | Min - {:.4g} | Max - {:.4g}".format(np.mean(cv_score), np.std(cv_score), np.min(cv_score), np.max(cv_score)))
+
+    # Predict on testing data:
+    dtest[target] = alg.predict(dtest[predictors])
+
+    # Export submission file:
+    IDcol.append(target)
+    submission = pd.DataFrame({ x: dtest[x] for x in IDcol})
+    #submission.to_csv(filename, index=False)
+
+    # plot the value of K for KNN (x-axis) versus the cross-validated accuracy (y-axis)
+
+    plt.plot(IDcol, target)
+    plt.xlabel('Value of target')
+    plt.ylabel('Cross-Validated Accuracy')
+    ax = plt.subplot()
+    plt.show()
+
+
+
+
+
+# Linear Regression
+predictors = [x for x in train.columns if x not in [target]+IDcol]
+print (predictors)
+alg1 = LinearRegression(normalize=True)
+modelfit(alg1, train, test, predictors, target, IDcol, 'alg1.csv')
+coef1 = pd.Series(alg1.coef_, predictors).sort_values()
+coef1.plot(kind='bar', title='Model Coefficients')
+
+# Ridge regression
+predictors = [x for x in train.columns if x not in [target]+IDcol]
+alg2 = Ridge(alpha=0.05,normalize=True)
+modelfit(alg2, train, test, predictors, target, IDcol, 'alg2.csv')
+coef2 = pd.Series(alg2.coef_, predictors).sort_values()
+coef2.plot(kind='bar', title='Model Coefficients')
