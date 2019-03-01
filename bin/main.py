@@ -133,7 +133,6 @@ def modelfit(alg, dtrain, dtest, predictors, target, IDcol, filename):
 
 
 
-
 # Linear Regression
 predictors = [x for x in train.columns if x not in [target]+IDcol]
 print (predictors)
